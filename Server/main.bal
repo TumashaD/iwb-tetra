@@ -30,9 +30,13 @@ public function main() returns error? {
 
     http:Service competitionService = services:createCompetitionService(db, CORS_CONFIG);
     http:Service userService = services:createUserService(db, CORS_CONFIG, authInterceptor);
+    http:Service teamService = services:createTeamService(db, CORS_CONFIG);
+    http:Service enrollmentService = services:createEnrollmentService(db, CORS_CONFIG);
 
     check ln.attach(competitionService, "/competitions");
     check ln.attach(userService, "/users");
+    check ln.attach(teamService, "/teams");
+    check ln.attach(enrollmentService, "/enrollments");
 
     check ln.'start();
     log:printInfo("Competition service started on port " + serverPort.toString());

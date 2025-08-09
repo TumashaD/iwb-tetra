@@ -17,31 +17,12 @@ public type Competition record {
     string updated_at;
 };
 
-public type CompetitionUpdate record {
-    string? title?;
-    string? description?;
-    string? start_date?;
-    string? end_date?;
-    string? category?;
-    string? status?;
-};
-
-public type CompetitionCreate record {
-    string title;
-    string description;
-    string organizer_id;
-    string start_date;
-    string end_date;
-    string category;
-    string status;
-};
-
 public function createCompetitionService(postgresql:Client dbClient, http:CorsConfig corsConfig) returns http:Service {
     return @http:ServiceConfig{cors : corsConfig} isolated service object {
 
         private final postgresql:Client db = dbClient;
 
-        isolated resource function get .(http:RequestContext ctx) returns json|http:InternalServerError|error {
+    isolated resource function get .(http:RequestContext ctx) returns json|http:InternalServerError|error {
             sql:ParameterizedQuery query = `SELECT * FROM competitions`;
             stream<Competition, sql:Error?> competitionsResult = self.db->query(query, Competition);
         Competition[]|error competitions = from Competition competition in competitionsResult
@@ -56,129 +37,43 @@ public function createCompetitionService(postgresql:Client dbClient, http:CorsCo
         }.toJson();
     }
 
-    isolated resource function patch [int id](http:RequestContext ctx, @http:Payload CompetitionUpdate updateData) returns json|http:InternalServerError|http:NotFound|http:BadRequest|error {
-        // First, check if the competition exists
-        sql:ParameterizedQuery checkQuery = `SELECT id FROM competitions WHERE id = ${id}`;
-        stream<record {int id;}, sql:Error?> checkResult = self.db->query(checkQuery);
-        record {int id;}[]|error existingCompetition = from record {int id;} comp in checkResult select comp;
+    isolated resource function post create(http:RequestContext ctx, @http:Payload json competitionData) returns json|http:InternalServerError|http:BadRequest|error {
         
-        if existingCompetition is error {
-            log:printError("Error checking competition existence", existingCompetition);
-            return http:INTERNAL_SERVER_ERROR;
-        }
-        
-        if existingCompetition.length() == 0 {
-            return http:NOT_FOUND;
-        }
+        // Extract and validate required fields from JSON
+        json|error titleJson = competitionData.title;
+        json|error descriptionJson = competitionData.description;
+        json|error organizerIdJson = competitionData.organizer_id;
+        json|error startDateJson = competitionData.start_date;
+        json|error endDateJson = competitionData.end_date;
+        json|error categoryJson = competitionData.category;
+        json|error statusJson = competitionData.status;
 
-        // Check if at least one field is provided for update
-        if updateData?.title is () && updateData?.description is () && 
-           updateData?.start_date is () && updateData?.end_date is () && 
-           updateData?.category is () && updateData?.status is () {
+        if titleJson is error || organizerIdJson is error ||  startDateJson is error || endDateJson is error || categoryJson is error || statusJson is error {
+            log:printError("Missing required fields in request payload");
             return http:BAD_REQUEST;
         }
-        
-        // Execute update using parameterized queries for each field
-        sql:ExecutionResult? execResult = ();
-        
-        if updateData?.title is string {
-            sql:ExecutionResult|error result = self.db->execute(`UPDATE competitions SET title = ${updateData?.title}, updated_at = NOW() WHERE id = ${id}`);
-            if result is error {
-                log:printError("Failed to update competition", result);
-                return http:INTERNAL_SERVER_ERROR;
-            }
-            execResult = result;
-        }
-        
-        if updateData?.description is string {
-            sql:ExecutionResult|error result = self.db->execute(`UPDATE competitions SET description = ${updateData?.description}, updated_at = NOW() WHERE id = ${id}`);
-            if result is error {
-                log:printError("Failed to update competition", result);
-                return http:INTERNAL_SERVER_ERROR;
-            }
-            execResult = result;
-        }
-        
-        if updateData?.start_date is string {
-            sql:ExecutionResult|error result = self.db->execute(`UPDATE competitions SET start_date = ${updateData?.start_date}::date, updated_at = NOW() WHERE id = ${id}`);
-            if result is error {
-                log:printError("Failed to update competition", result);
-                return http:INTERNAL_SERVER_ERROR;
-            }
-            execResult = result;
-        }
-        
-        if updateData?.end_date is string {
-            sql:ExecutionResult|error result = self.db->execute(`UPDATE competitions SET end_date = ${updateData?.end_date}::date, updated_at = NOW() WHERE id = ${id}`);
-            if result is error {
-                log:printError("Failed to update competition", result);
-                return http:INTERNAL_SERVER_ERROR;
-            }
-            execResult = result;
-        }
-        
-        if updateData?.category is string {
-            sql:ExecutionResult|error result = self.db->execute(`UPDATE competitions SET category = ${updateData?.category}, updated_at = NOW() WHERE id = ${id}`);
-            if result is error {
-                log:printError("Failed to update competition", result);
-                return http:INTERNAL_SERVER_ERROR;
-            }
-            execResult = result;
-        }
-        
-        if updateData?.status is string {
-            sql:ExecutionResult|error result = self.db->execute(`UPDATE competitions SET status = ${updateData?.status}, updated_at = NOW() WHERE id = ${id}`);
-            if result is error {
-                log:printError("Failed to update competition", result);
-                return http:INTERNAL_SERVER_ERROR;
-            }
-            execResult = result;
-        }
-        
-        if execResult is () {
-            return http:BAD_REQUEST;
-        }
-        
-        if execResult.affectedRowCount == 0 {
-            return http:NOT_FOUND;
-        }
-        
-        // Fetch the updated competition
-        sql:ParameterizedQuery selectQuery = `SELECT * FROM competitions WHERE id = ${id}`;
-        stream<Competition, sql:Error?> updatedCompetitionResult = self.db->query(selectQuery, Competition);
-        Competition[]|error updatedCompetition = from Competition competition in updatedCompetitionResult
-                                                   select competition;
-        
-        if updatedCompetition is error {
-            log:printError("Failed to fetch updated competition", updatedCompetition);
-            return http:INTERNAL_SERVER_ERROR;
-        }
-        
-        if updatedCompetition.length() == 0 {
-            return http:NOT_FOUND;
-        }
-        
-        return {
-            "competition": updatedCompetition[0],
-            "message": "Competition updated successfully",
-            "timestamp": time:utcNow()
-        }.toJson();
-    }
 
-    isolated resource function post create(http:RequestContext ctx, @http:Payload CompetitionCreate competitionData) returns json|http:InternalServerError|http:BadRequest|error {
+        // Cast JSON values to appropriate types
+        string title = titleJson.toString();
+        string description = descriptionJson is error ? "" : descriptionJson.toString();
+        string organizer_id = organizerIdJson.toString();
+        string start_date = startDateJson.toString();
+        string end_date = endDateJson.toString();
+        string category = categoryJson.toString();
+        string status = statusJson.toString();
+
         // Validate required fields
-        if competitionData.title.trim() == "" || competitionData.description.trim() == "" || 
-           competitionData.organizer_id.trim() == "" || competitionData.start_date.trim() == "" || 
-           competitionData.end_date.trim() == "" || competitionData.category.trim() == "" {
+        if title.trim() == "" || organizer_id.trim() == "" || start_date.trim() == "" || 
+           end_date.trim() == "" || category.trim() == "" {
             return http:BAD_REQUEST;
         }
         
         // Insert new competition
         sql:ExecutionResult|error result = self.db->execute(`
             INSERT INTO competitions (title, description, organizer_id, start_date, end_date, category, status, created_at, updated_at) 
-            VALUES (${competitionData.title}, ${competitionData.description}, ${competitionData.organizer_id}::uuid, 
-                    ${competitionData.start_date}::date, ${competitionData.end_date}::date, ${competitionData.category}, 
-                    ${competitionData.status}, NOW(), NOW())
+            VALUES (${title}, ${description}, ${organizer_id}::uuid, 
+                    ${start_date}::date, ${end_date}::date, ${category}, 
+                    ${status}, NOW(), NOW())
         `);
         
         if result is error {
@@ -229,6 +124,89 @@ public function createCompetitionService(postgresql:Client dbClient, http:CorsCo
         }.toJson();
     }
 
+    isolated resource function patch [int id](http:RequestContext ctx, @http:Payload json updateData) returns json|http:InternalServerError|http:NotFound|http:BadRequest|error {
+
+        // fetch the existing competition
+        sql:ParameterizedQuery selectQuery = `SELECT * FROM competitions WHERE id = ${id}`;
+        stream<Competition, sql:Error?> competitionResult = self.db->query(selectQuery, Competition);
+        Competition[]|error competitionArr = from Competition c in competitionResult select c;
+        
+        if competitionArr is error {
+            log:printError("Failed to fetch existing competition", competitionArr);
+            return http:INTERNAL_SERVER_ERROR;
+        }
+        
+        if competitionArr.length() == 0 {
+            return http:NOT_FOUND;
+        }
+        
+        Competition existingCompetition = competitionArr[0];
+
+        // Extract fields from JSON, using existing values as defaults
+        json|error titleJson = updateData.title;
+        json|error descriptionJson = updateData.description;
+        json|error startDateJson = updateData.start_date;
+        json|error endDateJson = updateData.end_date;
+        json|error categoryJson = updateData.category;
+        json|error statusJson = updateData.status;
+
+        string title = titleJson !is error ? titleJson.toString() : existingCompetition.title;
+        string description = descriptionJson !is error ? descriptionJson.toString() : existingCompetition.description;
+        string start_date = startDateJson !is error ? startDateJson.toString() : existingCompetition.start_date;
+        string end_date = endDateJson !is error ? endDateJson.toString() : existingCompetition.end_date;
+        string category = categoryJson !is error ? categoryJson.toString() : existingCompetition.category;
+        string status = statusJson !is error ? statusJson.toString() : existingCompetition.status;
+
+        // Check if at least one field is provided for update (optional)
+        if titleJson is error && descriptionJson is error && 
+           startDateJson is error && endDateJson is error && 
+           categoryJson is error && statusJson is error {
+            log:printError("No valid fields provided for update");
+            return http:BAD_REQUEST;
+        }
+
+        // Update competition with single query 
+        sql:ExecutionResult|error result = self.db->execute(`
+            UPDATE competitions 
+            SET title = ${title}, description = ${description}, start_date = ${start_date}::date, 
+                end_date = ${end_date}::date, category = ${category}, status = ${status}, updated_at = NOW()
+            WHERE id = ${id}
+        `);
+
+        log:printInfo("Updating competition with ID: " + id.toString(), 
+            title = title, 
+            description = description, 
+            start_date = start_date,
+            end_date = end_date,
+            category = category,
+            status = status);
+
+        if result is error {
+            log:printError("Failed to update competition", result);
+            return http:INTERNAL_SERVER_ERROR;
+        }
+
+        if result.affectedRowCount == 0 {
+            return http:NOT_FOUND;
+        }
+
+        // Fetch and return the updated competition
+        sql:ParameterizedQuery updatedQuery = `SELECT * FROM competitions WHERE id = ${id}`;
+        stream<Competition, sql:Error?> updatedResult = self.db->query(updatedQuery, Competition);
+        Competition[]|error updatedArr = from Competition c in updatedResult select c;
+
+        if updatedArr is error {
+            log:printError("Failed to fetch updated competition", updatedArr);
+            return http:INTERNAL_SERVER_ERROR;
+        }
+
+        return {
+            "competition": updatedArr[0],
+            "message": "Competition updated successfully",
+            "timestamp": time:utcNow()
+        }.toJson();
+    }    
+    
     isolated resource function delete [int id](http:RequestContext ctx) returns json|http:InternalServerError|http:NotFound|error {
         // Check if the competition exists
         sql:ParameterizedQuery checkQuery = `SELECT id FROM competitions WHERE id = ${id}`;
